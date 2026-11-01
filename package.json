@@ -1,0 +1,72 @@
+{
+  "name": "@johnhenry/score",
+  "version": "0.0.0",
+  "description": "A music score as data: ticks at 480 PPQ, tempo/meter/key maps, repeats, and score-to-note-events. Pure, zero-dependency, worker-safe.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./score.schema.json": "./schema/score.schema.json",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "schema",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "music",
+    "score",
+    "midi",
+    "tempo",
+    "notation",
+    "ticks",
+    "ppq",
+    "repeats",
+    "music-theory"
+  ],
+  "author": "John Henry <john@iamjohnhenry.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johnhenry/score.git"
+  },
+  "homepage": "https://github.com/johnhenry/score#readme",
+  "bugs": {
+    "url": "https://github.com/johnhenry/score/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "ajv": "^8.17.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

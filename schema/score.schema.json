@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://viaframe.johnhenry.me/schemas/score.schema.json",
+  "title": "Score (format 1)",
+  "description": "A piece of music as data: notes on a tick timeline (480 ticks to the quarter note), tracks, and the tempo, meter and key maps and repeat marks that say how it is read. Ticks are authoritative; seconds are derived through the tempo map (docs/design/score.md, \"Interchange\"). Modelled on music-studio's Score (src/core/model/types.ts). Unknown fields are ignored by readers and kept by writers that round-trip. Limits below are the schema's bounds; a reader may be stricter.",
+  "type": "object",
+  "required": ["version", "ppq", "bpm", "timeSignature", "tracks"],
+  "properties": {
+    "version": { "const": 1, "description": "The format. Bumped only by a change an old reader would misread; added optional fields do not bump it." },
+    "ppq": { "const": 480, "description": "Ticks per quarter note. Fixed at 480: 1 eighth = 240, 1 sixteenth = 120, a triplet eighth = 160. Another resolution is converted on import (SMF files state their own division)." },
+    "title": { "type": "string", "maxLength": 200, "default": "" },
+    "bpm": { "$ref": "#/$defs/bpm", "description": "Quarter notes a minute at tick 0. A tempoChanges entry at tick 0 overrides it, so the two cannot disagree." },
+    "timeSignature": { "$ref": "#/$defs/timeSignature", "description": "The meter at measure 0." },
+    "keySignature": { "$ref": "#/$defs/fifths", "default": 0, "description": "The key at measure 0, in fifths: +n sharps, -n flats." },
+    "measures": { "type": "integer", "minimum": 1, "maximum": 4096, "description": "How many measures the written grid shows. A reader takes the larger of this and what the notes need." },
+    "tempoChanges": {
+      "type": "array",
+      "maxItems": 4096,
+      "description": "Tempo after the start, by tick. A step function: each tempo holds until the next change (no accelerando). Order does not matter; a reader sorts, and a second change at one tick wins.",
+      "items": { "$ref": "#/$defs/tempoChange" }
+    },
+    "meterChanges": {
+      "type": "array",
+      "maxItems": 4096,
+      "description": "Meter changes by 0-based measure, never by tick: a meter taking effect mid-bar is not notatable.",
+      "items": { "$ref": "#/$defs/meterChange" }
+    },
+    "keyChanges": {
+      "type": "array",
+      "maxItems": 4096,
+      "description": "Key changes by 0-based measure. A key change moves no barlines; it changes spelling and the signature drawn.",
+      "items": { "$ref": "#/$defs/keyChange" }
+    },
+    "repeats": {
+      "type": "array",
+      "maxItems": 4096,
+      "description": "Repeat signs and volta brackets, stated as marks on barlines (what notation and MusicXML state), not as a play order. The play order is derived (docs/design/score.md, \"Repeats\").",
+      "items": { "$ref": "#/$defs/repeatMark" }
+    },
+    "tracks": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Instruments (parts), not clip lanes. A grand-staff instrument is one track with staffCount 2.",
+      "items": { "$ref": "#/$defs/track" }
+    },
+    "patches": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Synth patches the tracks point at by instrumentId (\"patch:<id>\"), carried in the score so a shared score is self-contained. Their shape belongs to the audio side (viaframe's DSP patch or music-studio's SynthPatch) and is not constrained here.",
+      "items": { "type": "object" }
+    },
+    "buses": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "Shared send buses (music-studio: at most 4). Shape owned by the effects rack; not constrained here.",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "tick": { "type": "integer", "minimum": 0, "maximum": 2147483647, "description": "A position or length in ticks (480 to the quarter note)." },
+    "bpm": { "type": "number", "minimum": 20, "maximum": 300, "description": "music-studio clamps and rounds to a whole number from 20 to 300; a reader may do the same." },
+    "fifths": { "type": "integer", "minimum": -7, "maximum": 7 },
+    "timeSignature": { "type": "string", "pattern": "^[1-9][0-9]?/(1|2|4|8|16|32)$", "description": "\"num/den\", e.g. \"4/4\", \"6/8\". A measure is num x (4 / den) quarter notes: round(that x 480) ticks." },
+    "tempoChange": {
+      "type": "object",
+      "required": ["tick", "bpm"],
+      "properties": { "tick": { "$ref": "#/$defs/tick" }, "bpm": { "$ref": "#/$defs/bpm" } }
+    },
+    "meterChange": {
+      "type": "object",
+      "required": ["measure", "timeSignature"],
+      "properties": { "measure": { "type": "integer", "minimum": 0, "maximum": 4095 }, "timeSignature": { "$ref": "#/$defs/timeSignature" } }
+    },
+    "keyChange": {
+      "type": "object",
+      "required": ["measure", "fifths"],
+      "properties": { "measure": { "type": "integer", "minimum": 0, "maximum": 4095 }, "fifths": { "$ref": "#/$defs/fifths" } }
+    },
+    "repeatMark": {
+      "type": "object",
+      "required": ["measure"],
+      "description": "Marks on one measure's barlines. One measure may carry several at once (a first ending closes with a repeat sign on the same barline).",
+      "properties": {
+        "measure": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "start": { "type": "boolean", "description": "A repeat sign on the measure's LEFT barline: play from here again." },
+        "end": {
+          "type": "object",
+          "required": ["times"],
+          "description": "A repeat sign on the RIGHT barline.",
+          "properties": { "times": { "type": "integer", "minimum": 2, "maximum": 99, "default": 2, "description": "How many times the section is played in TOTAL: 2 means play it twice." } }
+        },
+        "ending": {
+          "type": "object",
+          "required": ["numbers", "stop"],
+          "description": "A volta bracket beginning at this measure.",
+          "properties": {
+            "numbers": { "type": "array", "minItems": 1, "maxItems": 99, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 99 }, "description": "The passes it is played on: [1] a first ending, [2, 3] one bracket shared by two passes." },
+            "stop": { "type": "boolean", "description": "Closes the bracket at this measure's right barline." }
+          }
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "required": ["id", "startTick", "durationTicks", "pitch", "velocity"],
+      "description": "The first five fields are all playback needs. The rest are notation-only (they never change what is heard) and may be absent: absent means derive it.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "description": "Unique within the score; edits address notes by it." },
+        "startTick": { "$ref": "#/$defs/tick" },
+        "durationTicks": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "pitch": { "type": "integer", "minimum": 0, "maximum": 127, "description": "MIDI note number, 60 = C4 = middle C. music-studio's editor stays inside 12..107." },
+        "velocity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lyric": { "type": "string", "maxLength": 100 },
+        "lyricHyphen": { "type": "boolean" },
+        "staff": { "enum": [1, 2] },
+        "voice": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "accidental": { "enum": ["sharp", "flat", "natural", "double-sharp", "double-flat"], "description": "Enharmonic override; absent spells from the key (music-studio score/pitch.ts Accidental)." },
+        "tiedToNext": { "type": "boolean" },
+        "slurStart": { "type": "boolean" },
+        "slurStop": { "type": "boolean" },
+        "hairpin": { "enum": ["cresc", "dim"] },
+        "hairpinStop": { "type": "boolean" },
+        "tuplet": { "type": "object", "required": ["num", "den"], "properties": { "num": { "type": "integer", "minimum": 2, "maximum": 99 }, "den": { "type": "integer", "minimum": 1, "maximum": 99 } }, "description": "{ num: 3, den: 2 } is a triplet. Notation only: the note's ticks already say how long it sounds." },
+        "articulations": { "type": "array", "maxItems": 5, "uniqueItems": true, "items": { "enum": ["staccato", "accent", "tenuto", "marcato", "fermata"] } },
+        "dynamic": { "enum": ["pp", "p", "mp", "mf", "f", "ff"] }
+      }
+    },
+    "rest": {
+      "type": "object",
+      "required": ["id", "startTick", "durationTicks"],
+      "description": "An explicit rest. Gaps between notes are filled automatically, so most rests have no object.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "startTick": { "$ref": "#/$defs/tick" },
+        "durationTicks": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "voice": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "staff": { "enum": [1, 2] }
+      }
+    },
+    "clef": { "enum": ["treble", "bass", "alto", "tenor"] },
+    "track": {
+      "type": "object",
+      "required": ["id", "name", "instrumentId", "notes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 100 },
+        "instrumentId": { "type": "string", "maxLength": 100, "description": "A pointer, not a definition: a General MIDI preset id, \"patch:<id>\" into the score's patches, or \"sample:<id>\" into the host's own sample store. A reader that cannot resolve it falls back to a stock voice and says so." },
+        "notes": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/note" } },
+        "muted": { "type": "boolean", "default": false },
+        "soloed": { "type": "boolean", "default": false },
+        "clef": { "$ref": "#/$defs/clef", "default": "treble" },
+        "staffCount": { "enum": [1, 2], "default": 1 },
+        "lowerClef": { "$ref": "#/$defs/clef", "default": "bass" },
+        "clefChanges": { "type": "array", "maxItems": 1024, "items": { "type": "object", "required": ["tick", "clef"], "properties": { "tick": { "$ref": "#/$defs/tick" }, "clef": { "$ref": "#/$defs/clef" } } } },
+        "rests": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/rest" } },
+        "volume": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pan": { "type": "number", "minimum": -1, "maximum": 1 },
+        "effects": { "type": "array", "maxItems": 6, "description": "Insert effects in order. Shape owned by the effects rack; not constrained here.", "items": { "type": "object" } },
+        "sends": { "type": "array", "maxItems": 4, "items": { "type": "object" } },
+        "hidden": { "type": "boolean", "description": "Hidden from editors, independent of muted." }
+      }
+    }
+  }
+}
