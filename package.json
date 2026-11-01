@@ -1,6 +1,6 @@
 {
   "name": "@johnhenry/score",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A music score as data: ticks at 480 PPQ, tempo/meter/key maps, repeats, and score-to-note-events. Pure, zero-dependency, worker-safe.",
   "type": "module",
   "exports": {
