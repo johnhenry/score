@@ -11,3 +11,4 @@ First cut. Clean-room TypeScript, behaviour-compatible with the core of a notati
 - `validateScore` / `isScore` / `assertScore` / `parseScore`: a zero-dependency validator driven by the schema, plus unique-id checks.
 - Differences from the editor it was modelled on: tempo is clamped to 20..300 but no longer rounded to a whole number (the schema allows fractions); `linear` also requires that no measure is skipped.
 - Zero runtime dependencies; no DOM; worker-safe.
+
