@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (first release will be 0.1.0)
+## 0.1.0 (2026-10-31)
 
 First cut. Clean-room TypeScript, behaviour-compatible with the core of a notation-capable score editor.
 
