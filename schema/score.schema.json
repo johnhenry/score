@@ -16,7 +16,7 @@
     "tempoChanges": {
       "type": "array",
       "maxItems": 4096,
-      "description": "Tempo after the start, by tick. A step function: each tempo holds until the next change (no accelerando). Order does not matter; a reader sorts, and a second change at one tick wins.",
+      "description": "Tempo after the start, by tick. A step function (each tempo holds until the next change) unless a change has `ramp: \"linear\"`, which moves the tempo smoothly to the next change. Order does not matter; a reader sorts, and a second change at one tick wins.",
       "items": { "$ref": "#/$defs/tempoChange" }
     },
     "meterChanges": {
@@ -64,7 +64,30 @@
     "tempoChange": {
       "type": "object",
       "required": ["tick", "bpm"],
-      "properties": { "tick": { "$ref": "#/$defs/tick" }, "bpm": { "$ref": "#/$defs/bpm" } }
+      "properties": {
+        "tick": { "$ref": "#/$defs/tick" },
+        "bpm": { "$ref": "#/$defs/bpm" },
+        "ramp": { "enum": ["linear"], "description": "Absent: the tempo steps here and holds (accelerando/ritardando off). \"linear\": the tempo moves in a straight line (in bpm, over ticks) from this change's bpm to the next change's bpm, arriving exactly at the next change's tick. Ignored on the last change, or when the next change has the same bpm." }
+      }
+    },
+    "controllerEvent": {
+      "type": "object",
+      "required": ["tick", "cc", "value"],
+      "description": "One MIDI continuous-controller value at a tick (CC 64 sustain, 1 mod wheel, 7 volume, 11 expression ...). Holds until the next event of the same cc on the track.",
+      "properties": {
+        "tick": { "$ref": "#/$defs/tick" },
+        "cc": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "value": { "type": "integer", "minimum": 0, "maximum": 127 }
+      }
+    },
+    "pitchBendEvent": {
+      "type": "object",
+      "required": ["tick", "value"],
+      "description": "Pitch bend at a tick. Holds until the next event on the track.",
+      "properties": {
+        "tick": { "$ref": "#/$defs/tick" },
+        "value": { "type": "number", "minimum": -1, "maximum": 1, "description": "-1..1 across the wheel's full travel, 0 centred. A reader maps it to the voice's range (General MIDI default +-2 semitones); an SMF writer quantises to 14 bits." }
+      }
     },
     "meterChange": {
       "type": "object",
@@ -157,7 +180,9 @@
         "pan": { "type": "number", "minimum": -1, "maximum": 1 },
         "effects": { "type": "array", "maxItems": 6, "description": "Insert effects in order. Shape owned by the effects rack; not constrained here.", "items": { "type": "object" } },
         "sends": { "type": "array", "maxItems": 4, "items": { "type": "object" } },
-        "hidden": { "type": "boolean", "description": "Hidden from editors, independent of muted." }
+        "hidden": { "type": "boolean", "description": "Hidden from editors, independent of muted." },
+        "controllers": { "type": "array", "maxItems": 65536, "description": "The controller lane: timed CC events (sustain CC 64 and so on), kept as events and never baked into note lengths. Order does not matter; a reader sorts by tick, and a later entry wins at one tick and cc.", "items": { "$ref": "#/$defs/controllerEvent" } },
+        "pitchBend": { "type": "array", "maxItems": 65536, "description": "Timed pitch-bend events for the track's voice.", "items": { "$ref": "#/$defs/pitchBendEvent" } }
       }
     }
   }

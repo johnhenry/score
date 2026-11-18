@@ -1,3 +1,4 @@
+import { applySustain, CC_SUSTAIN } from "./controllers.js";
 import { buildPerformance, performanceTempo, type Performance } from "./performance.js";
 import { bpmAtTick, buildTempoMap, durationSeconds, secondsAtTick, secondsPerTick, type TempoMap } from "./tempo.js";
 import type { Score } from "./types.js";
@@ -13,12 +14,29 @@ export interface NoteEvent {
   dur: number;
 }
 
+/** A controller value on the seconds timeline. */
+export interface ControllerEventSeconds {
+  time: number;
+  cc: number;
+  value: number;
+}
+
+export interface BendEventSeconds {
+  time: number;
+  /** -1..1 */
+  value: number;
+}
+
 export interface TrackEvents {
   trackId: string;
   instrumentId: string;
   volume?: number;
   pan?: number;
   events: NoteEvent[];
+  /** The controller lane in seconds; absent when the track has none. */
+  controllers?: ControllerEventSeconds[];
+  /** Pitch bend in seconds; absent when the track has none. */
+  pitchBend?: BendEventSeconds[];
 }
 
 export interface ScoreEvents {
@@ -35,6 +53,12 @@ export interface ScoreEvents {
 export interface ScoreEventsOptions {
   /** Drop muted tracks and honour solo. Default true; an export wants false. */
   audibleOnly?: boolean;
+  /**
+   * Apply the sustain pedal (CC 64) to note durations: a note released while the
+   * pedal is down sounds until it comes up. Default false, so a host that
+   * handles the pedal itself reads the lane from `controllers` instead.
+   */
+  sustain?: boolean;
 }
 
 /** Round to the microsecond so equal scores give equal JSON. */
@@ -67,15 +91,28 @@ export function scoreToEvents(score: Score, options: ScoreEventsOptions = {}): S
         return { note: n.pitch, velocity: n.velocity, time: roundSeconds(secondsAtTick(tempoMap, n.playTick)), dur: roundSeconds(dur) };
       }),
     };
+    if (t.controllers) out.controllers = t.controllers.map((c) => ({ time: roundSeconds(secondsAtTick(tempoMap, c.playTick)), cc: c.cc, value: c.value }));
+    if (t.pitchBend) out.pitchBend = t.pitchBend.map((b) => ({ time: roundSeconds(secondsAtTick(tempoMap, b.playTick)), value: b.value }));
     if (t.volume !== undefined) out.volume = t.volume;
     if (t.pan !== undefined) out.pan = t.pan;
     return out;
   });
 
+  const spanEndSeconds = roundSeconds(secondsAtTick(tempoMap, performance.spanEndTick));
+  let endSeconds = roundSeconds(secondsAtTick(tempoMap, performance.endTick));
+  if (options.sustain) {
+    for (const t of tracks) {
+      if (!t.controllers) continue;
+      const pedal = t.controllers.filter((c) => c.cc === CC_SUSTAIN);
+      t.events = applySustain(t.events, pedal, Math.max(spanEndSeconds, endSeconds)).map((e) => ({ ...e, dur: roundSeconds(e.dur) }));
+      for (const e of t.events) endSeconds = Math.max(endSeconds, roundSeconds(e.time + e.dur));
+    }
+  }
+
   return {
     tracks,
-    endSeconds: roundSeconds(secondsAtTick(tempoMap, performance.endTick)),
-    spanEndSeconds: roundSeconds(secondsAtTick(tempoMap, performance.spanEndTick)),
+    endSeconds,
+    spanEndSeconds,
     tempoMap,
     performance,
   };
