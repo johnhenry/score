@@ -44,10 +44,11 @@ scoreToNoteEvents(score);
 
 Positions and lengths are integer ticks, `PPQ = 480`: a quarter is 480, an eighth 240, a sixteenth 120, a triplet eighth 160. Tuplets are notation (the note's `tuplet` field says how it is written; its ticks say how long it sounds). **Seconds exist only at the audio boundary** and are derived through the tempo map; editing the music edits `tempoChanges`, never an audio clock.
 
-Tempo is a step function: each tempo holds until the next change (no accelerando). With the points `(t_i, b_i)` and `S_i` the seconds at each point:
+Tempo is a step function (each tempo holds until the next change) unless a change carries `ramp: "linear"`: then the tempo moves in a straight line (bpm over ticks) from that change's bpm to the next change's bpm, arriving at the next change's tick (accelerando / ritardando). A ramp with no next change, or to the same bpm, is a plain step; scores without `ramp` behave exactly as before. With the points `(t_i, b_i)` and `S_i` the seconds at each point:
 
 - `seconds(tick) = S_i + (tick - t_i) * 60 / (b_i * 480)` for the last `t_i <= tick`
 - `tick(s) = t_i + (s - S_i) / spt(b_i)` for the last `S_i <= s` (a float; round only where a tick is stored)
+- inside a ramp `p -> q` (`T` ticks, `d = q.bpm - p.bpm`): `bpm(x) = p.bpm + d x / T`, `seconds = S_p + (T / (8 d)) ln(bpm(x) / p.bpm)`, and `tick(s)` inverts it with `bpm = p.bpm exp(8 d s / T)`
 - a duration depends on where it starts: `dur = seconds(start + len) - seconds(start)`.
 
 Meter and key changes are keyed by **measure**, not tick (a meter taking effect mid-bar is not notatable). Once the meter changes, "bar N starts at N x ticksPerMeasure" is false; use `measureStartTick`.
@@ -76,11 +77,15 @@ Building sorts, drops non-finite entries, clamps (tempo 20..300, key -7..7), see
 
 - `buildPerformance(score, { audibleOnly? })` is the score as heard: repeats taken, one `playTick` per occurrence, `endTick` (last note stops), `spanEndTick` (the written grid's end, for a transport), `linear` (no repeat changes the order).
 - `performanceTempo(score, performance)` re-places tempo changes onto the unrolled timeline: entering a span restates the tempo in force at its source.
-- `scoreToEvents(score, { audibleOnly? })` is the full adapter: per-track `{ trackId, instrumentId, volume?, pan?, events }`, plus `endSeconds`, `spanEndSeconds` and the unrolled `tempoMap`. `scoreToNoteEvents(score)` is the flat, time-sorted list. Muted tracks are dropped and solo is honoured (mute wins over solo); pass `audibleOnly: false` for an export. `time` and `dur` are seconds rounded to the microsecond so equal scores give equal JSON.
+- `scoreToEvents(score, { audibleOnly?, sustain? })` is the full adapter: per-track `{ trackId, instrumentId, volume?, pan?, events }`, plus `endSeconds`, `spanEndSeconds` and the unrolled `tempoMap`. `scoreToNoteEvents(score)` is the flat, time-sorted list. Muted tracks are dropped and solo is honoured (mute wins over solo); pass `audibleOnly: false` for an export. `time` and `dur` are seconds rounded to the microsecond so equal scores give equal JSON.
+
+## Controller lane
+
+A track may carry `controllers: [{ tick, cc, value }]` (CC 0..127, value 0..127; CC 64 is the sustain pedal, >= 64 is down) and `pitchBend: [{ tick, value }]` (-1..1, 0 centred). They are timed events, never baked into note lengths. Absent means none, so existing scores are unchanged. `buildPerformance` unrolls them with repeats (restating the held values at each span start); `scoreToEvents` returns them per track in seconds (`controllers`, `pitchBend`). `scoreToEvents(score, { sustain: true })` applies the pedal to note durations (a note released while the pedal is down sounds until pedal-up, cut by a retrigger of the same pitch); `applySustain`, `controllerLane`, `pitchBendLane`, `controllerValueAt`, `pitchBendAt`, `bendToWheel` / `wheelToBend` (14-bit) are exported for hosts that apply them differently.
 
 ## Scope and limits
 
-- **Format 1** has no tempo ramps, no CC or pitch-bend lanes, and one lyric syllable per note. Each would be an added optional field, not a version bump.
+- **Format 1** has one lyric syllable per note. Tempo ramps (0.2.0), the CC lane and the pitch-bend lane (0.2.0) were added as optional fields, not a version bump.
 - **Fractional tempos are kept** (`120.5` stays `120.5`); they are clamped to 20..300 but not rounded.
 - **Patterns and clips** (a drag-and-drop composer's lanes of clips over the shared tick timeline) are not modelled yet. They are meant to arrive as new optional top-level fields beside `tracks`, with `tracks` staying "instruments, not lanes". The schema and this package ignore unknown fields and the functions here never drop them, so a writer can already carry them.
 - **Not here**: Standard MIDI Files, MusicXML, engraving, audio. Those are separate packages that depend on the Score shape.

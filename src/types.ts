@@ -77,11 +77,35 @@ export interface Track {
   effects?: Record<string, unknown>[];
   sends?: Record<string, unknown>[];
   hidden?: boolean;
+  /** The controller lane (CC events). Absent = none; old scores have none. */
+  controllers?: ControllerEvent[];
+  pitchBend?: PitchBendEvent[];
 }
 
 export interface TempoChange {
   tick: number;
   bpm: number;
+  /**
+   * `"linear"`: the tempo moves in a straight line (bpm over ticks) from this
+   * change's bpm to the next change's bpm, arriving at the next change's tick
+   * (accelerando / ritardando). Absent: a step. Ignored on the last change.
+   */
+  ramp?: "linear";
+}
+
+/** One continuous-controller value (CC 64 = sustain pedal, >= 64 is down). */
+export interface ControllerEvent {
+  tick: number;
+  /** 0..127 */
+  cc: number;
+  /** 0..127 */
+  value: number;
+}
+
+/** Pitch bend: -1..1 across the wheel, 0 centred. */
+export interface PitchBendEvent {
+  tick: number;
+  value: number;
 }
 
 export interface MeterChange {

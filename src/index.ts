@@ -5,6 +5,7 @@ export * from "./meter.js";
 export * from "./key.js";
 export * from "./repeats.js";
 export * from "./performance.js";
+export * from "./controllers.js";
 export * from "./events.js";
 export * from "./validate.js";
 export * from "./create.js";
